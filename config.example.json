@@ -1,0 +1,13 @@
+{
+  "host": "127.0.0.1",
+  "port": 8000,
+  "log_level": "info",
+  "modbus_port": "COM3",
+  "modbus_baudrate": 9600,
+  "modbus_parity": "N",
+  "modbus_stopbits": 1,
+  "modbus_timeout": 1.0,
+  "modbus_retries": 1,
+  "inter_request_delay": 0.03,
+  "inter_device_delay": 0.05
+}
