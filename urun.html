@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Ürün Girişi</title>
+    <style>
+        :root {
+            --bg: #f5f7fb;
+            --card: #ffffff;
+            --primary: #2563eb;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --muted: #6b7280;
+            --shadow: 0 4px 12px rgba(0,0,0,0.08);
+            --radius: 12px;
+        }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: Inter, system-ui, sans-serif; 
+            margin: 0; 
+            padding: 40px 20px; 
+            background: linear-gradient(180deg, #eef2ff 0%, var(--bg) 40%); 
+            color: #111827; 
+        }
+        .container { max-width: 1400px; margin: 0 auto; display:flex; flex-direction:column; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; order:1; }
+        #cycleContainer { order:3; }
+        h2 { 
+            font-size: 1.75rem; 
+            margin-bottom: 1.5rem; 
+            display: flex; 
+            align-items: center; 
+            gap: 0.5rem; 
+        }
+        .cycle-card { 
+            background: var(--card); 
+            padding: 1.5rem; 
+            margin-bottom: 2rem; 
+            border-radius: var(--radius); 
+            box-shadow: var(--shadow); 
+            border-left: 4px solid var(--primary);
+        }
+        .cycle-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .cycle-info { 
+            font-size: 0.95rem; 
+            color: var(--muted); 
+        }
+        .cycle-info strong { color: #111827; }
+        
+        .order-section { 
+            background: #f9fafb; 
+            padding: 1.25rem; 
+            border-radius: 10px; 
+            margin-bottom: 1.5rem;
+        }
+        .order-section h4 { 
+            margin: 0 0 1rem 0; 
+            font-size: 1.1rem; 
+            color: #111827; 
+        }
+        .order-inputs { 
+            display: flex; 
+            gap: 1rem; 
+            flex-wrap: wrap; 
+            align-items: flex-end;
+        }
+        .input-group { flex: 1; min-width: 150px; }
+        .input-group label { 
+            display: block; 
+            font-size: 0.9rem; 
+            font-weight: 600; 
+            color: var(--muted); 
+            margin-bottom: 0.4rem; 
+        }
+        .input-group select,
+        .input-group input { 
+            width: 100%; 
+            padding: 0.6rem 0.75rem; 
+            border: 1px solid #e5e7eb; 
+            border-radius: 8px; 
+            font-size: 0.95rem;
+        }
+        .input-group select:focus,
+        .input-group input:focus { 
+            outline: none; 
+            border-color: var(--primary); 
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
+        
+        .btn { 
+            padding: 0.6rem 1.25rem; 
+            border: none; 
+            border-radius: 8px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            transition: all 0.15s ease;
+            font-size: 0.95rem;
+        }
+        .btn-primary { 
+            background: var(--primary); 
+            color: white; 
+        }
+        .btn-primary:hover { 
+            background: #1d4ed8; 
+            transform: translateY(-1px);
+        }
+        .btn-success { 
+            background: var(--success); 
+            color: white; 
+        }
+        .btn-success:hover { 
+            background: #16a34a; 
+        }
+        
+        .products-section { 
+            margin-top: 1.5rem; 
+        }
+        .products-section h4 { 
+            margin: 0 0 1rem 0; 
+            font-size: 1.1rem; 
+            color: #111827; 
+        }
+        .products-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); 
+            gap: 1rem; 
+        }
+        
+        .product-card { 
+            background: #fff; 
+            border: 2px solid #e5e7eb; 
+            border-radius: 10px; 
+            padding: 1rem; 
+            transition: all 0.15s ease;
+        }
+        .product-card:hover { 
+            border-color: var(--primary); 
+            box-shadow: 0 4px 12px rgba(37,99,235,0.15);
+        }
+        .product-card.success { border-color: var(--success); background: #f0fdf4; }
+        .product-card.failed { border-color: var(--danger); background: #fef2f2; }
+        .product-card.conditional { border-color: #f59e0b; background: #fffbeb; }
+        
+        .product-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 1rem; 
+            padding-bottom: 0.75rem; 
+            border-bottom: 2px solid #f3f4f6;
+        }
+        .product-number { 
+            font-size: 1.1rem; 
+            font-weight: 700; 
+            color: var(--primary); 
+        }
+        .product-serial { 
+            font-size: 0.85rem; 
+            color: var(--muted); 
+        }
+        
+        .product-fields { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 0.75rem; 
+            margin-bottom: 1rem;
+        }
+        .product-field { 
+            display: flex; 
+            flex-direction: column; 
+        }
+        .product-field label { 
+            font-size: 0.8rem; 
+            font-weight: 600; 
+            color: var(--muted); 
+            margin-bottom: 0.3rem; 
+        }
+        .product-field input,
+        .product-field select,
+        .product-field textarea { 
+            padding: 0.5rem; 
+            border: 1px solid #e5e7eb; 
+            border-radius: 6px; 
+            font-size: 0.9rem;
+        }
+        .product-field textarea { 
+            resize: vertical; 
+            min-height: 50px; 
+        }
+        
+        .status-group { 
+            display: flex; 
+            gap: 0.5rem; 
+        }
+        .status-group select { 
+            flex: 1; 
+        }
+        
+        .save-all-btn { 
+            margin-top: 1rem; 
+            width: 100%; 
+            padding: 0.75rem; 
+            font-size: 1rem;
+        }
+        
+        .empty-state { 
+            text-align: center; 
+            padding: 3rem; 
+            color: var(--muted); 
+            background: var(--card); 
+            border-radius: var(--radius); 
+            box-shadow: var(--shadow);
+        }
+        .empty-state-icon { 
+            font-size: 3rem; 
+            margin-bottom: 1rem; 
+        }
+        .tracking-section { background:#fff; padding:1.5rem; border-radius:var(--radius); box-shadow:var(--shadow); margin:0 0 2rem; order:2; }
+        .tracking-section h3 { margin-top:0; color:#1e3a8a; }
+        .tracking-filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; align-items:end; }
+        .tracking-filters label { display:flex; flex-direction:column; gap:5px; color:var(--muted); font-size:.85rem; font-weight:600; }
+        .tracking-filters input,.tracking-filters select { padding:9px; border:1px solid #cbd5e1; border-radius:7px; }
+        .tracking-actions { display:flex; gap:8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="page-header">
+            <h2>📦 Ürün Girişi</h2>
+            <button class="btn btn-primary" onclick="window.location.href='/static/manual_urun.html'">
+                ➕ Manuel Ürün
+            </button>
+        </div>
+        <div id="cycleContainer">
+            <div class="empty-state">
+                <div class="empty-state-icon">⏳</div>
+                <p>Yükleniyor...</p>
+            </div>
+        </div>
+        <section class="tracking-section">
+            <h3>🔎 Cycle filtreleme</h3>
+            <div class="tracking-filters">
+                <label>Başlangıç tarih-saat<input type="datetime-local" id="cycle-filter-start"></label>
+                <label>Bitiş tarih-saat<input type="datetime-local" id="cycle-filter-end"></label>
+                <label>Makine
+                    <select id="cycle-filter-machine" onchange="applyCycleMachineFilter()"><option value="">Tüm makineler</option></select>
+                </label>
+                <label>Tarih sırası
+                    <select id="cycle-date-sort" onchange="applyCycleMachineFilter()">
+                        <option value="asc">Eskiden yeniye</option>
+                        <option value="desc">Yeniden eskiye</option>
+                    </select>
+                </label>
+                <label style="justify-content:flex-end">
+                    <span><input type="checkbox" id="cycle-show-running" checked onchange="applyCycleMachineFilter()"> Devam edenleri göster</span>
+                </label>
+                <label style="justify-content:flex-end">
+                    <span><input type="checkbox" id="cycle-show-completed-orders" onchange="applyCycleMachineFilter()"> Bitmiş siparişleri göster</span>
+                </label>
+            </div>
+            <div class="tracking-actions" style="margin-top:12px;flex-wrap:wrap">
+                <button class="btn btn-primary" onclick="setCycleShift('08:00','17:30')">08:00–17:30</button>
+                <button class="btn btn-primary" onclick="setCycleShift('18:00','08:00')">18:00–08:00</button>
+                <button class="btn btn-primary" onclick="setCycleShift('08:00','16:30')">08:00–16:30</button>
+                <button class="btn" onclick="applyCycleMachineFilter()">Özel aralığı uygula</button>
+                <button class="btn" onclick="clearCycleFilters()">Temizle</button>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let savedCycleIds = new Set();
+        let ordersData = [];
+        let personsData = [];
+        let cyclesData = {};
+        let availableCycles = [];
+
+        function escapeTrackingHtml(value) {
+            return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+        }
+
+        function orderOptionLabel(order) {
+            const volume = Number(order.volume_per_piece);
+            const volumeLabel = Number.isFinite(volume)
+                ? `${volume.toLocaleString('tr-TR', { maximumFractionDigits: 3 })} dm³/adet`
+                : 'Hacim belirtilmemiş';
+            return `${order.ordernumber} — ${order.name} — ${order.productsize} — ${order.quantity} Adet`;
+        }
+
+        // Siparişleri getir
+        async function fetchOrders() {
+            try {
+                const res = await fetch('/orders');
+                ordersData = await res.json();
+            } catch (err) {
+                console.error('Siparişler yüklenemedi:', err);
+            }
+        }
+
+        async function fetchPersons() {
+            try {
+                const res = await fetch('/persons');
+                if (!res.ok) throw new Error('Personel listesi alınamadı');
+                personsData = await res.json();
+            } catch (err) {
+                console.error('Personeller yüklenemedi:', err);
+                personsData = [];
+            }
+        }
+
+        // Cycle'ları getir
+        async function fetchCycles() {
+            await Promise.all([fetchOrders(), fetchPersons()]);
+            
+            try {
+                const cycleRes = await fetch('/cycle-logs');
+                const cycles = await cycleRes.json();
+
+                const taskRes = await fetch('/task-logs');
+                const tasks = await taskRes.json();
+                
+                // Kaydedilmiş cycle'ları işaretle
+                const uniqueCycleIds = new Set(tasks.filter(t => !t.product_reverted).map(t => t.cycle_id));
+                savedCycleIds = uniqueCycleIds;
+
+                // Sadece yeni cycle'ları göster
+                availableCycles = cycles.filter(c => !savedCycleIds.has(c.id));
+                availableCycles.forEach(c => cyclesData[c.id] = {cycle:c});
+                const filter = document.getElementById('cycle-filter-machine');
+                const machineNames = [...new Set(availableCycles.map(c => c.machine_name))];
+                filter.innerHTML = '<option value="">Tüm makineler</option>' + machineNames.map(name => `<option value="${escapeTrackingHtml(name)}">${escapeTrackingHtml(name)}</option>`).join('');
+                applyCycleMachineFilter();
+            } catch (err) {
+                console.error('Cycle verisi alınamadı:', err);
+                document.getElementById('cycleContainer').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">❌</div>
+                        <p>Veriler yüklenirken hata oluştu.</p>
+                    </div>
+                `;
+            }
+        }
+
+
+        // Sipariş seçildiğinde verileri doldur ve durumu kontrol et
+        async function onOrderSelect(cycleId) {
+            const select = document.getElementById(`order-select-${cycleId}`);
+            const ordernumber = select.value;
+            
+            if (!ordernumber) {
+                // Kalıp adedi input'unu temizle
+                document.getElementById(`mold-count-${cycleId}`).value = '';
+                return;
+            }
+            
+            const order = ordersData.find(o => o.ordernumber == ordernumber);
+            if (!order) return;
+            
+            // Sipariş durumunu kontrol et
+            try {
+                const statusRes = await fetch(`/order-status/${encodeURIComponent(ordernumber)}`);
+                let status = await statusRes.json();
+                
+                if (status.is_completed) {
+                    const allowCompleted = document.getElementById('cycle-show-completed-orders')?.checked;
+                    if (!allowCompleted || !confirm(`${ordernumber} bitmiş bir sipariştir. Yeni ürün eklemek için sipariş yeniden açılsın mı?`)) {
+                        select.value = '';
+                        return;
+                    }
+                    const reopenRes = await fetch(`/orders/${encodeURIComponent(ordernumber)}/reopen`, {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({reason:'Ürün girişinden ek üretim için yeniden açıldı'})
+                    });
+                    const reopenData = await reopenRes.json();
+                    if (!reopenRes.ok) throw new Error(reopenData.detail || 'Sipariş yeniden açılamadı');
+                    const refreshed = await fetch(`/order-status/${encodeURIComponent(ordernumber)}`);
+                    status = await refreshed.json();
+                    const localOrder = ordersData.find(item => item.ordernumber == ordernumber);
+                    if (localOrder) localOrder.is_completed = false;
+                }
+                
+                // Kalan adedi göster
+                const infoDiv = document.getElementById(`order-info-${cycleId}`);
+                if (infoDiv) {
+                    infoDiv.innerHTML = `
+                        <div style="background: #eff6ff; padding: 0.75rem; border-radius: 8px; border-left: 3px solid #2563eb; margin-top: 0.5rem;">
+                            <strong>📊 Sipariş Durumu:</strong><br>
+                            Sipariş: ${status.quantity} | Sağlam: ${status.accepted_count} | Arızalı: ${status.failed_count} | Onay bekleyen: ${status.conditional_count} | Toplam üretim: ${status.produced_count} | 
+                            <strong style="color: #2563eb;">Kalan: ${status.remaining} adet</strong><br>
+                            <span style="font-size: 0.85rem; color: #6b7280;">Sıradaki seri no: ${status.next_serial}</span>
+                        </div>
+                    `;
+                }
+                
+                // Cycle verisini sakla
+                if (!cyclesData[cycleId]) cyclesData[cycleId] = {};
+                cyclesData[cycleId].orderData = order;
+                cyclesData[cycleId].orderStatus = status;
+                
+            } catch (err) {
+                console.error('Sipariş durumu alınamadı:', err);
+                alert('⚠️ Sipariş durumu kontrol edilemedi!');
+            }
+        }
+
+        // Kalıp adedi girildiğinde ürün kartlarını oluştur
+        function generateProductCards(cycleId, machineId) {
+            const moldCount = parseInt(document.getElementById(`mold-count-${cycleId}`).value);
+            const ordernumber = document.getElementById(`order-select-${cycleId}`).value;
+            
+            if (!moldCount || moldCount < 1) {
+                alert('Lütfen geçerli bir kalıp adedi girin (1 veya daha fazla)');
+                return;
+            }
+            
+            if (!ordernumber) {
+                alert('Lütfen önce bir sipariş seçin');
+                return;
+            }
+            
+            const order = ordersData.find(o => o.ordernumber == ordernumber);
+            const orderStatus = cyclesData[cycleId]?.orderStatus;
+            
+            if (!order || !orderStatus) {
+                alert('Sipariş bulunamadı veya durum kontrol edilemedi');
+                return;
+            }
+            
+            // Ürün kartlarını oluştur
+            const container = document.getElementById(`products-container-${cycleId}`);
+            container.innerHTML = '';
+            
+            // Seri numarası: orderStatus.next_serial'dan başla
+            const serialStart = orderStatus.next_sequence;
+            
+            for (let i = 0; i < moldCount; i++) {
+                const productCard = createProductCard(cycleId, i + 1, order, `${order.ordernumber}/${serialStart + i}`);
+                container.appendChild(productCard);
+            }
+            
+            // Kaydet butonu göster
+            document.getElementById(`save-all-btn-${cycleId}`).style.display = 'block';
+        }
+
+        // Tek ürün kartı oluştur
+        function createProductCard(cycleId, productIndex, orderData, serialNumber) {
+            const context = cyclesData[cycleId]?.cycle?.machine_context || {};
+            const div = document.createElement('div');
+            div.className = 'product-card';
+            div.id = `product-${cycleId}-${productIndex}`;
+            
+            div.innerHTML = `
+                <div class="product-header">
+                    <div class="product-number">🏷️ Ürün ${productIndex}</div>
+                    <div class="product-serial" style="background: #dbeafe; padding: 0.4rem 0.8rem; border-radius: 8px; font-size: 1.05rem;">
+                        📦 Seri: <strong id="serial-${cycleId}-${productIndex}" style="color: #1d4ed8; font-size: 1.2rem;">${serialNumber}</strong>
+                    </div>
+                </div>
+                <div class="product-fields">
+                    <div class="product-field">
+                        <label>Ürün Adı</label>
+                        <input type="text" id="name-${cycleId}-${productIndex}" value="${orderData.name}" />
+                    </div>
+                    <div class="product-field">
+                        <label>Boyut</label>
+                        <input type="text" id="size-${cycleId}-${productIndex}" value="${orderData.productsize}" />
+                    </div>
+                    <div class="product-field">
+                        <label>Tip</label>
+                        <input type="text" id="type-${cycleId}-${productIndex}" value="${orderData.producttype}" />
+                    </div>
+                    <div class="product-field">
+                        <label>Kalıp No</label>
+                        <input type="text" id="mold-${cycleId}-${productIndex}" value="${orderData.moldnumber}" />
+                    </div>
+                    <div class="product-field">
+                        <label>Lot Numarası</label>
+                        <input type="text" id="lot-${cycleId}-${productIndex}" value="${context.lot_number || orderData.lot_number || ''}" placeholder="Lot numarası" />
+                    </div>
+                    <div class="product-field">
+                        <label>Sorumlu Personel</label>
+                        <select id="person-${cycleId}-${productIndex}">
+                            <option value="">Personel seçiniz...</option>
+                            ${personsData.map(person => `
+                                <option value="${person.id}" ${Number(person.id) === Number(context.person_id || orderData.person_id) ? 'selected' : ''}>
+                                    ${person.full_name || `${person.name} ${person.surname}`}
+                                </option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <div class="product-field">
+                        <label>Durum</label>
+                        <select id="status-${cycleId}-${productIndex}" onchange="updateCardStyle(${cycleId}, ${productIndex})">
+                            <option value="SUCCESS">✅ Başarılı</option>
+                            <option value="FAILED">❌ Başarısız</option>
+                            <option value="CONDITIONAL">⚠️ Şartlı Ürün</option>
+                        </select>
+                    </div>
+                    <div class="product-field">
+                        <label>Açıklama (Opsiyonel)</label>
+                        <textarea id="details-${cycleId}-${productIndex}" placeholder="Varsa not ekleyin..."></textarea>
+                    </div>
+                </div>
+            `;
+            
+            return div;
+        }
+
+        // Kart stilini duruma göre güncelle
+        function updateCardStyle(cycleId, productIndex) {
+            const card = document.getElementById(`product-${cycleId}-${productIndex}`);
+            const status = document.getElementById(`status-${cycleId}-${productIndex}`).value;
+            
+            card.classList.remove('success', 'failed', 'conditional');
+            if (status === 'SUCCESS') card.classList.add('success');
+            if (status === 'FAILED') card.classList.add('failed');
+            if (status === 'CONDITIONAL') card.classList.add('conditional');
+        }
+
+        // Tüm ürünleri kaydet
+        async function saveAllProducts(cycleId, machineId) {
+            const moldCount = parseInt(document.getElementById(`mold-count-${cycleId}`).value);
+            const ordernumber = document.getElementById(`order-select-${cycleId}`).value;
+            const order = ordersData.find(o => o.ordernumber == ordernumber);
+            const orderStatus = cyclesData[cycleId]?.orderStatus;
+            
+            if (!moldCount || !order || !orderStatus) {
+                alert('Lütfen önce sipariş seçin ve kalıp adedi girin');
+                return;
+            }
+
+            // Kartlar açıkken başka kayıt yapılmış olabilir; kaydetmeden hemen önce güncel durumu kontrol et.
+            try {
+                const currentRes = await fetch(`/order-status/${encodeURIComponent(ordernumber)}`);
+                const currentStatus = await currentRes.json();
+                if (!currentRes.ok || currentStatus.error) throw new Error(currentStatus.detail || currentStatus.error || 'Durum alınamadı');
+                if (currentStatus.is_completed) {
+                    alert('Bu sipariş kalemi tamamlanmış ve kapatılmıştır. Yeni ürün kaydedilemez.');
+                    return;
+                }
+                if (currentStatus.remaining === 0) {
+                    const proceed = confirm(`⚠️ ${ordernumber} kaleminde kalan sağlam ürün sayısı 0.\n\nYeni kayıtlar sipariş fazlası üretim olarak görünecek. Arızalı/şartlı ürün takibi için yine de kaydetmek istiyor musunuz?`);
+                    if (!proceed) return;
+                } else if (moldCount > currentStatus.remaining) {
+                    const proceed = confirm(`⚠️ Kalan sağlam ürün sayısı ${currentStatus.remaining}, oluşturulan kart sayısı ${moldCount}.\n\nBazı ürünler arızalı/şartlı değilse sipariş adedi aşılabilir. Devam edilsin mi?`);
+                    if (!proceed) return;
+                }
+            } catch (err) {
+                alert(`Siparişin güncel durumu kontrol edilemedi: ${err.message}`);
+                return;
+            }
+
+            // Kayıt ortasında eksik personel nedeniyle yarım ürün oluşmasını önle.
+            for (let i = 1; i <= moldCount; i++) {
+                if (!document.getElementById(`person-${cycleId}-${i}`)?.value) {
+                    alert(`Lütfen Ürün ${i} için sorumlu personel seçin.`);
+                    return;
+                }
+            }
+            
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (let i = 1; i <= moldCount; i++) {
+                // Seri numarasını DOM'dan al (zaten doğru hesaplanmış)
+                const serialNumber = document.getElementById(`serial-${cycleId}-${i}`).textContent.trim();
+                
+                const product = {
+                    name: document.getElementById(`name-${cycleId}-${i}`).value,
+                    serialnumber: serialNumber,
+                    productsize: document.getElementById(`size-${cycleId}-${i}`).value,
+                    producttype: document.getElementById(`type-${cycleId}-${i}`).value,
+                    moldnumber: document.getElementById(`mold-${cycleId}-${i}`).value.trim(),
+                    lot_number: document.getElementById(`lot-${cycleId}-${i}`).value.trim(),
+                    ordernumber: ordernumber,
+                    machine_id: machineId,
+                    person_id: parseInt(document.getElementById(`person-${cycleId}-${i}`).value),
+                    cycle_id: cycleId,
+                    task_name: `Ürün ${i} - ${order.name}`,
+                    status: document.getElementById(`status-${cycleId}-${i}`).value,
+                    details: document.getElementById(`details-${cycleId}-${i}`).value || null,
+                    timestamp: new Date().toISOString()
+                };
+                
+                try {
+                    // Ürün kaydet
+                    const prodRes = await fetch('/products', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(product)
+                    });
+                    
+                    if (!prodRes.ok) {
+                        console.error(`Ürün ${i} kaydedilemedi`);
+                        failCount++;
+                        continue;
+                    }
+                    
+                    const prodData = await prodRes.json();
+                    
+                    successCount++;
+                    
+                } catch (err) {
+                    console.error(`Ürün ${i} kaydedilirken hata:`, err);
+                    failCount++;
+                }
+            }
+            
+            if (failCount === 0) {
+                alert(`✅ ${successCount} ürün başarıyla kaydedildi!`);
+                savedCycleIds.add(cycleId);
+                fetchCycles();
+            } else {
+                alert(`⚠️ ${successCount} başarılı, ${failCount} başarısız kayıt.`);
+            }
+        }
+
+        // Cycle kartlarını oluştur
+        function renderCycleCards(cycles) {
+            const container = document.getElementById('cycleContainer');
+            container.innerHTML = '';
+            
+            if (cycles.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✅</div>
+                        <p>Yeni ürün girişi yapılacak döngü bulunamadı.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            cycles.forEach(cycle => {
+                const card = document.createElement('div');
+                card.className = 'cycle-card';
+                
+                const startTime = cycle.cycle_start_time ? new Date(cycle.cycle_start_time).toLocaleString('tr-TR') : '-';
+                const endTime = cycle.cycle_end_time ? new Date(cycle.cycle_end_time).toLocaleString('tr-TR') : 'Devam ediyor';
+                
+                card.innerHTML = `
+                    <div class="cycle-header">
+                        <div class="cycle-info">
+                            <strong>🏭 Makine ID:</strong> ${cycle.machine_name} 
+                            <strong>🔄 Cycle ID:</strong> ${cycle.id}<br>
+                            <strong>⏰ Başlangıç:</strong> ${startTime} | 
+                            <strong>🏁 Bitiş:</strong> ${endTime}
+                            <br><strong>Gerçek süre:</strong> ${cycle.total_duration ?? '-'} dk · <strong>Set:</strong> ${cycle.ideal_cooking_time ?? '-'} + ${cycle.ideal_renewal_time ?? '-'} dk
+                        </div>
+                    </div>
+                    
+                    <div class="order-section">
+                        <h4>📋 Sipariş Bilgileri</h4>
+                        <div class="order-inputs">
+                            <div class="input-group">
+                                <label>Sipariş No</label>
+                                <select id="order-select-${cycle.id}" onchange="onOrderSelect(${cycle.id})">
+                                    <option value="">Sipariş seçiniz...</option>
+                                    ${ordersData.filter(o => !o.is_completed || document.getElementById('cycle-show-completed-orders')?.checked || o.ordernumber===cycle.machine_context?.order_number).map(o => `<option value="${escapeTrackingHtml(o.ordernumber)}" ${o.ordernumber===cycle.machine_context?.order_number?'selected':''}>${escapeTrackingHtml(orderOptionLabel(o))}${o.is_completed?' · BİTMİŞ':''}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Kalıp Adedi</label>
+                                <input type="number" id="mold-count-${cycle.id}" min="1" value="${cycle.machine_context?.mold_count || ''}" placeholder="Örn: 4" />
+                            </div>
+                            <button class="btn btn-primary" onclick="generateProductCards(${cycle.id}, ${cycle.machine_id})">
+                                🎨 Ürün Kartları Oluştur
+                            </button>
+                        </div>
+                        <div id="order-info-${cycle.id}"></div>
+                    </div>
+                    
+                    <div class="products-section">
+                        <h4>🏷️ Ürünler</h4>
+                        <div class="products-grid" id="products-container-${cycle.id}">
+                            <p style="color: var(--muted); text-align: center; padding: 2rem;">
+                                Önce sipariş seçin ve kalıp adedi girin, sonra "Ürün Kartları Oluştur" butonuna tıklayın.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-success save-all-btn" id="save-all-btn-${cycle.id}" 
+                            onclick="saveAllProducts(${cycle.id}, ${cycle.machine_id})" style="display: none;">
+                        💾 Tüm Ürünleri Kaydet
+                    </button>
+                    <div style="display:flex;gap:8px;margin-top:10px">
+                      <button class="btn" onclick="invalidateCycle(${cycle.id})">Cycle'ı geçersiz yap</button>
+                      ${!cycle.cycle_end_time ? `<button class="btn" onclick="closeShift(${cycle.id})">Vardiya sonu kapat</button>` : ''}
+                    </div>
+                `;
+                if (cycle.total_duration != null && cycle.ideal_total_time > 0) {
+                    const errorPercent = Math.abs(cycle.total_duration - cycle.ideal_total_time) / cycle.ideal_total_time * 100;
+                    card.style.borderLeftColor = errorPercent <= 10
+                        ? '#22c55e'
+                        : errorPercent <= 40 ? '#f59e0b' : '#ef4444';
+                    card.title = `Toplam süre sapması: %${errorPercent.toFixed(1)}`;
+                }
+                
+                container.appendChild(card);
+                // Makine ayarından otomatik gelen sipariş, kullanıcı seçim
+                // kutusuna dokunmasa da durum/seri bilgilerini hazırlamalıdır.
+                if (cycle.machine_context?.order_number) {
+                    onOrderSelect(cycle.id);
+                }
+            });
+        }
+
+        function applyCycleMachineFilter() {
+            const selected = document.getElementById('cycle-filter-machine').value;
+            const startValue = document.getElementById('cycle-filter-start').value;
+            const endValue = document.getElementById('cycle-filter-end').value;
+            const showRunning = document.getElementById('cycle-show-running').checked;
+            const start = startValue ? new Date(startValue).getTime() : null;
+            const end = endValue ? new Date(endValue).getTime() : null;
+            let cycles = availableCycles.filter(c => {
+                if (selected && c.machine_name !== selected) return false;
+                if (!showRunning && !c.cycle_end_time) return false;
+                const cycleTime = new Date(c.cycle_start_time || c.timestamp || 0).getTime();
+                if (start !== null && cycleTime < start) return false;
+                if (end !== null && cycleTime > end) return false;
+                return true;
+            });
+            const direction = document.getElementById('cycle-date-sort').value;
+            cycles.sort((a, b) => {
+                const aTime = new Date(a.cycle_start_time || a.timestamp || 0).getTime();
+                const bTime = new Date(b.cycle_start_time || b.timestamp || 0).getTime();
+                return direction === 'asc' ? aTime - bTime : bTime - aTime;
+            });
+            renderCycleCards(cycles);
+        }
+
+        function localCycleDateTime(date) {
+            const offset = date.getTimezoneOffset() * 60000;
+            return new Date(date.getTime() - offset).toISOString().slice(0,16);
+        }
+
+        function setCycleShift(startText, endText) {
+            const now = new Date();
+            const [startHour,startMinute] = startText.split(':').map(Number);
+            const [endHour,endMinute] = endText.split(':').map(Number);
+            const start = new Date(now.getFullYear(),now.getMonth(),now.getDate(),startHour,startMinute,0);
+            const end = new Date(now.getFullYear(),now.getMonth(),now.getDate(),endHour,endMinute,0);
+            if (end <= start) end.setDate(end.getDate()+1);
+            document.getElementById('cycle-filter-start').value = localCycleDateTime(start);
+            document.getElementById('cycle-filter-end').value = localCycleDateTime(end);
+            applyCycleMachineFilter();
+        }
+
+        function clearCycleFilters() {
+            document.getElementById('cycle-filter-start').value = '';
+            document.getElementById('cycle-filter-end').value = '';
+            document.getElementById('cycle-filter-machine').value = '';
+            document.getElementById('cycle-date-sort').value = 'desc';
+            document.getElementById('cycle-show-running').checked = true;
+            document.getElementById('cycle-show-completed-orders').checked = false;
+            applyCycleMachineFilter();
+        }
+
+        async function invalidateCycle(id) {
+            const reason = prompt('Cycle neden geçersiz?'); if (!reason) return;
+            const res = await fetch(`/cycle-logs/${id}/invalidate`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})});
+            const data = await res.json(); if (!res.ok) return alert(data.detail || 'İşlem başarısız'); alert(data.message); fetchCycles();
+        }
+        async function closeShift(id) {
+            if (!confirm('Açık cycle vardiya sonu olarak kapatılsın mı?')) return;
+            const res = await fetch(`/cycle-logs/${id}/close-shift`, {method:'POST'}); const data=await res.json();
+            if (!res.ok) return alert(data.detail || 'İşlem başarısız'); alert(data.message); fetchCycles();
+        }
+
+        // Sayfa yüklendiğinde başlat
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchCycles();
+        });
+    </script>
+</body>
+</html>
