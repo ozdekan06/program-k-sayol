@@ -281,6 +281,34 @@
         let personsData = [];
         let cyclesData = {};
         let availableCycles = [];
+        const pendingOrderStatuses = new Map();
+        const savingCycles = new Set();
+
+        // Yalnızca eşzamanlı okumaları paylaş; sonraki kullanıcı işlemi yeniden okur.
+        function fetchOrderStatus(ordernumber, fresh = false) {
+            if (!fresh && pendingOrderStatuses.has(ordernumber)) return pendingOrderStatuses.get(ordernumber);
+            const request = (async () => {
+                const res = await fetch(`/order-status/${encodeURIComponent(ordernumber)}`);
+                const status = await res.json();
+                if (!res.ok || status.error) throw new Error(status.detail || status.error || 'Durum alınamadı');
+                return status;
+            })();
+            pendingOrderStatuses.set(ordernumber, request);
+            const clear = () => {
+                if (pendingOrderStatuses.get(ordernumber) === request) pendingOrderStatuses.delete(ordernumber);
+            };
+            request.then(clear, clear);
+            return request;
+        }
+
+        function publishOrderStatus(ordernumber, status) {
+            for (const [id, data] of Object.entries(cyclesData)) {
+                if (document.getElementById(`order-select-${id}`)?.value === ordernumber) {
+                    data.orderStatus = status;
+                    showOrderStatus(id, status);
+                }
+            }
+        }
 
         function escapeTrackingHtml(value) {
             return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
@@ -349,6 +377,22 @@
         }
 
 
+        function showOrderStatus(cycleId, status) {
+            // Kalan adedi göster
+            const infoDiv = document.getElementById(`order-info-${cycleId}`);
+            if (infoDiv) {
+                infoDiv.innerHTML = `
+                    <div style="background: #eff6ff; padding: 0.75rem; border-radius: 8px; border-left: 3px solid #2563eb; margin-top: 0.5rem;">
+                        <strong>📊 Sipariş Durumu:</strong><br>
+                        Sipariş: ${status.quantity} | Sağlam: ${status.accepted_count} | Arızalı: ${status.failed_count} | Onay bekleyen: ${status.conditional_count} | Toplam üretim: ${status.produced_count} | 
+                        <strong style="color: #2563eb;">Kalan: ${status.remaining} adet</strong><br>
+                        <span style="font-size: 0.85rem; color: #6b7280;">Sıradaki seri no: ${status.next_serial}</span>
+                    </div>
+                `;
+            }
+            
+        }
+
         // Sipariş seçildiğinde verileri doldur ve durumu kontrol et
         async function onOrderSelect(cycleId) {
             const select = document.getElementById(`order-select-${cycleId}`);
@@ -365,8 +409,8 @@
             
             // Sipariş durumunu kontrol et
             try {
-                const statusRes = await fetch(`/order-status/${encodeURIComponent(ordernumber)}`);
-                let status = await statusRes.json();
+                let status = await fetchOrderStatus(ordernumber);
+                if (!select.isConnected || select.value !== ordernumber) return;
                 
                 if (status.is_completed) {
                     const allowCompleted = document.getElementById('cycle-show-completed-orders')?.checked;
@@ -380,25 +424,14 @@
                     });
                     const reopenData = await reopenRes.json();
                     if (!reopenRes.ok) throw new Error(reopenData.detail || 'Sipariş yeniden açılamadı');
-                    const refreshed = await fetch(`/order-status/${encodeURIComponent(ordernumber)}`);
-                    status = await refreshed.json();
+                    status = await fetchOrderStatus(ordernumber, true);
                     const localOrder = ordersData.find(item => item.ordernumber == ordernumber);
                     if (localOrder) localOrder.is_completed = false;
                 }
                 
-                // Kalan adedi göster
-                const infoDiv = document.getElementById(`order-info-${cycleId}`);
-                if (infoDiv) {
-                    infoDiv.innerHTML = `
-                        <div style="background: #eff6ff; padding: 0.75rem; border-radius: 8px; border-left: 3px solid #2563eb; margin-top: 0.5rem;">
-                            <strong>📊 Sipariş Durumu:</strong><br>
-                            Sipariş: ${status.quantity} | Sağlam: ${status.accepted_count} | Arızalı: ${status.failed_count} | Onay bekleyen: ${status.conditional_count} | Toplam üretim: ${status.produced_count} | 
-                            <strong style="color: #2563eb;">Kalan: ${status.remaining} adet</strong><br>
-                            <span style="font-size: 0.85rem; color: #6b7280;">Sıradaki seri no: ${status.next_serial}</span>
-                        </div>
-                    `;
-                }
-                
+                if (!select.isConnected || select.value !== ordernumber) return;
+                showOrderStatus(cycleId, status);
+
                 // Cycle verisini sakla
                 if (!cyclesData[cycleId]) cyclesData[cycleId] = {};
                 cyclesData[cycleId].orderData = order;
@@ -411,7 +444,7 @@
         }
 
         // Kalıp adedi girildiğinde ürün kartlarını oluştur
-        function generateProductCards(cycleId, machineId) {
+        async function generateProductCards(cycleId, machineId) {
             const moldCount = parseInt(document.getElementById(`mold-count-${cycleId}`).value);
             const ordernumber = document.getElementById(`order-select-${cycleId}`).value;
             
@@ -425,6 +458,19 @@
                 return;
             }
             
+            // Başka kart veya kullanıcı ürün kaydetmiş olabilir.
+            try {
+                const status = await fetchOrderStatus(ordernumber, true);
+                if (document.getElementById(`order-select-${cycleId}`)?.value !== ordernumber) return;
+                publishOrderStatus(ordernumber, status);
+                if (status.is_completed) {
+                    alert('Bu sipariş tamamlanmış; ürün oluşturmadan önce yeniden açın.');
+                    return;
+                }
+            } catch (err) {
+                alert(`Siparişin güncel durumu kontrol edilemedi: ${err.message}`);
+                return;
+            }
             const order = ordersData.find(o => o.ordernumber == ordernumber);
             const orderStatus = cyclesData[cycleId]?.orderStatus;
             
@@ -526,6 +572,19 @@
 
         // Tüm ürünleri kaydet
         async function saveAllProducts(cycleId, machineId) {
+            if (savingCycles.has(cycleId)) return;
+            savingCycles.add(cycleId);
+            const button = document.getElementById(`save-all-btn-${cycleId}`);
+            if (button) button.disabled = true;
+            try {
+                await saveCycleProducts(cycleId, machineId);
+            } finally {
+                savingCycles.delete(cycleId);
+                if (button?.isConnected) button.disabled = false;
+            }
+        }
+
+        async function saveCycleProducts(cycleId, machineId) {
             const moldCount = parseInt(document.getElementById(`mold-count-${cycleId}`).value);
             const ordernumber = document.getElementById(`order-select-${cycleId}`).value;
             const order = ordersData.find(o => o.ordernumber == ordernumber);
@@ -538,9 +597,13 @@
 
             // Kartlar açıkken başka kayıt yapılmış olabilir; kaydetmeden hemen önce güncel durumu kontrol et.
             try {
-                const currentRes = await fetch(`/order-status/${encodeURIComponent(ordernumber)}`);
-                const currentStatus = await currentRes.json();
-                if (!currentRes.ok || currentStatus.error) throw new Error(currentStatus.detail || currentStatus.error || 'Durum alınamadı');
+                const currentStatus = await fetchOrderStatus(ordernumber, true);
+                publishOrderStatus(ordernumber, currentStatus);
+                const firstSerial = document.getElementById(`serial-${cycleId}-1`)?.textContent.trim();
+                if (firstSerial !== currentStatus.next_serial) {
+                    alert(`Seri numarası değişti. Güncel sıra ${currentStatus.next_serial}. Ürün kartlarını yeniden oluşturun.`);
+                    return;
+                }
                 if (currentStatus.is_completed) {
                     alert('Bu sipariş kalemi tamamlanmış ve kapatılmıştır. Yeni ürün kaydedilemez.');
                     return;
@@ -616,7 +679,15 @@
             if (failCount === 0) {
                 alert(`✅ ${successCount} ürün başarıyla kaydedildi!`);
                 savedCycleIds.add(cycleId);
-                fetchCycles();
+                availableCycles = availableCycles.filter(c => c.id !== cycleId);
+                document.getElementById(`order-select-${cycleId}`)?.closest('.cycle-card')?.remove();
+                delete cyclesData[cycleId];
+                if (!document.querySelector('#cycleContainer .cycle-card')) renderCycleCards([]);
+                try {
+                    publishOrderStatus(ordernumber, await fetchOrderStatus(ordernumber, true));
+                } catch (err) {
+                    console.error('Kayıt sonrası sipariş durumu yenilenemedi:', err);
+                }
             } else {
                 alert(`⚠️ ${successCount} başarılı, ${failCount} başarısız kayıt.`);
             }
