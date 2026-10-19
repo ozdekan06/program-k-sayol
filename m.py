@@ -4,8 +4,8 @@ from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pymodbus import FramerType
 import serial_asyncio
-from sqlalchemy.orm import Session
-from sqlalchemy import text, or_
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import text, or_, func, and_
 from sqlalchemy.exc import SQLAlchemyError
 from models import UARTLog, Machine, User, Base, SensorLog, Person, CycleLog, TaskLog, Product, Order, TimerLog, CycleEvent
 from database import engine, get_db, SessionLocal
@@ -193,6 +193,12 @@ async def startup_event():
                 if column not in product_cols:
                     conn.execute(text(f"ALTER TABLE product ADD COLUMN {column} {definition};"))
             conn.commit()
+
+        # Büyük geçmişte ürün/cycle bağlantılarını ve son görevleri hızlı bul.
+        with engine.begin() as conn:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_perf_tasks_product_latest ON task_logs (product_id, timestamp, id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_perf_tasks_cycle_product ON task_logs (cycle_id, product_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_perf_product_order_reverted ON product (ordernumber, is_reverted)"))
 
         with engine.connect() as conn:
             cycle_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(cycle_logs);"))]
@@ -943,13 +949,18 @@ def download_database_backup():
     return StreamingResponse(io.BytesIO(raw), media_type="application/x-sqlite3",
         headers={"Content-Disposition": f"attachment; filename={filename}"})
 @app.get("/cycle-logs")
-def get_cycle_logs(include_invalid: bool = False, db: Session = Depends(get_db)):
+def get_cycle_logs(include_invalid: bool = False, db: Session = Depends(get_db), pending_only: bool = False):
     """
     Tüm cycle loglarını getirir.
     """
-    query = db.query(CycleLog).join(Machine, CycleLog.machine_id == Machine.id)
+    query = db.query(CycleLog).join(Machine, CycleLog.machine_id == Machine.id).options(joinedload(CycleLog.machine))
     if not include_invalid:
         query = query.filter(CycleLog.is_valid.is_(True))
+    if pending_only:
+        linked_product = db.query(TaskLog.id).join(Product, TaskLog.product_id == Product.id).filter(
+            TaskLog.cycle_id == CycleLog.id, Product.is_reverted.is_(False)
+        ).exists()
+        query = query.filter(~linked_product)
     cycles = query.order_by(CycleLog.cycle_start_time.asc()).all()
     return [
         {
@@ -1597,14 +1608,35 @@ def create_task_log(task: dict = Body(...), db: Session = Depends(get_db)):
     db.refresh(log)
     return {"id": log.id}
 
+def _order_counts_many(db: Session, ordernumber=None):
+    # Son durum: önce zaman, aynı zamanda büyük ID. Geri alınmış ürünleri sayma.
+    latest_query = db.query(
+        TaskLog.product_id.label("product_id"), TaskLog.status.label("status"),
+        func.row_number().over(partition_by=TaskLog.product_id,
+            order_by=(TaskLog.timestamp.desc(), TaskLog.id.desc())).label("position")
+    )
+    if ordernumber is not None:
+        latest_query = latest_query.join(Product, TaskLog.product_id == Product.id).filter(
+            Product.ordernumber == ordernumber, Product.is_reverted.is_(False))
+    latest = latest_query.subquery()
+    query = db.query(Product.ordernumber, latest.c.status, func.count(Product.id)).outerjoin(
+        latest, and_(latest.c.product_id == Product.id, latest.c.position == 1)
+    ).filter(Product.is_reverted.is_(False))
+    if ordernumber is not None:
+        query = query.filter(Product.ordernumber == ordernumber)
+    result = {}
+    for number, status, count in query.group_by(Product.ordernumber, latest.c.status).all():
+        produced, counts = result.setdefault(number, [0, {"SUCCESS": 0, "FAILED": 0, "CONDITIONAL": 0}])
+        result[number][0] += count
+        if status in counts:
+            counts[status] += count
+    return result
+
+
 def _order_counts(db: Session, ordernumber: str):
-    products = db.query(Product).filter(Product.ordernumber == ordernumber, Product.is_reverted.is_(False)).all()
-    counts = {"SUCCESS": 0, "FAILED": 0, "CONDITIONAL": 0}
-    for product in products:
-        latest = db.query(TaskLog).filter(TaskLog.product_id == product.id).order_by(TaskLog.timestamp.desc(), TaskLog.id.desc()).first()
-        if latest and latest.status in counts:
-            counts[latest.status] += 1
-    return len(products), counts
+    produced, counts = _order_counts_many(db, ordernumber).get(
+        ordernumber, (0, {"SUCCESS": 0, "FAILED": 0, "CONDITIONAL": 0}))
+    return produced, counts
 
 @app.get("/order-status/{ordernumber}")
 def get_order_status(ordernumber: str, db: Session = Depends(get_db)):
@@ -1709,10 +1741,11 @@ def get_orders(db: Session = Depends(get_db)):
     """
     Tüm siparişleri getirir.
     """
-    orders = db.query(Order).order_by(Order.timestamp.desc()).all()
+    orders = db.query(Order).options(joinedload(Order.person)).order_by(Order.timestamp.desc()).all()
+    all_counts = _order_counts_many(db)
     result = []
     for o in orders:
-        produced_count, counts = _order_counts(db, o.ordernumber)
+        produced_count, counts = all_counts.get(o.ordernumber, (0, {"SUCCESS": 0, "FAILED": 0, "CONDITIONAL": 0}))
         result.append({
             "id": o.id,
             "name": o.name,
