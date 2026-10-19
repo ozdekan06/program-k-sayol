@@ -244,6 +244,10 @@
                 <p>Yükleniyor...</p>
             </div>
         </div>
+        <div id="cycle-pagination" style="order:4;text-align:center;margin-bottom:2rem" aria-live="polite">
+            <p id="cycle-page-info"></p>
+            <button class="btn btn-primary" id="cycle-load-more" onclick="loadCyclePage(true)" hidden>Daha fazla yükle</button>
+        </div>
         <section class="tracking-section">
             <h3>🔎 Cycle filtreleme</h3>
             <div class="tracking-filters">
@@ -255,7 +259,7 @@
                 <label>Tarih sırası
                     <select id="cycle-date-sort" onchange="applyCycleMachineFilter()">
                         <option value="asc">Eskiden yeniye</option>
-                        <option value="desc">Yeniden eskiye</option>
+                        <option value="desc" selected>Yeniden eskiye</option>
                     </select>
                 </label>
                 <label style="justify-content:flex-end">
@@ -281,6 +285,12 @@
         let personsData = [];
         let cyclesData = {};
         let availableCycles = [];
+        let cycleCursor = null;
+        let cycleHasMore = false;
+        let cycleLoading = false;
+        let cycleRequest = 0;
+        let cycleAbort = null;
+        let cycleFilters = null;
         const pendingOrderStatuses = new Map();
         const savingCycles = new Set();
 
@@ -343,35 +353,68 @@
             }
         }
 
-        // Cycle'ları getir
+        // İlk açılışta yardımcı listeler bir kez, cycle'lar 10'ar kayıt alınır.
         async function fetchCycles() {
             await Promise.all([fetchOrders(), fetchPersons()]);
-            
-            try {
-                const cycleRes = await fetch('/cycle-logs?pending_only=true');
-                const cycles = await cycleRes.json();
-
-                // Sunucu yalnızca aktif ürüne bağlı olmayan cycle'ları döndürür.
-                savedCycleIds = new Set();
-
-                // Sadece yeni cycle'ları göster
-                availableCycles = cycles.filter(c => !savedCycleIds.has(c.id));
-                availableCycles.forEach(c => cyclesData[c.id] = {cycle:c});
-                const filter = document.getElementById('cycle-filter-machine');
-                const machineNames = [...new Set(availableCycles.map(c => c.machine_name))];
-                filter.innerHTML = '<option value="">Tüm makineler</option>' + machineNames.map(name => `<option value="${escapeTrackingHtml(name)}">${escapeTrackingHtml(name)}</option>`).join('');
-                applyCycleMachineFilter();
-            } catch (err) {
-                console.error('Cycle verisi alınamadı:', err);
-                document.getElementById('cycleContainer').innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">❌</div>
-                        <p>Veriler yüklenirken hata oluştu.</p>
-                    </div>
-                `;
-            }
+            await applyCycleMachineFilter();
         }
 
+        function updateCyclePagination() {
+            const button = document.getElementById('cycle-load-more');
+            button.hidden = !cycleHasMore;
+            button.disabled = cycleLoading;
+            button.textContent = cycleLoading ? 'Yükleniyor...' : 'Daha fazla yükle';
+            document.getElementById('cycle-page-info').textContent = cycleLoading
+                ? 'Cycle kayıtları yükleniyor...'
+                : `${availableCycles.length} cycle gösteriliyor${cycleHasMore ? ' · Diğer kayıtlar için daha fazla yükleyin.' : ''}`;
+        }
+
+        async function loadCyclePage(append = false) {
+            if (append && (cycleLoading || !cycleHasMore)) return;
+            if (cycleAbort) cycleAbort.abort();
+            cycleAbort = new AbortController();
+            const requestId = ++cycleRequest;
+            cycleLoading = true;
+            updateCyclePagination();
+            const params = new URLSearchParams(cycleFilters || {});
+            if (append && cycleCursor) params.set('cursor', cycleCursor);
+            try {
+                const response = await fetch(`/product-entry-cycles?${params}`, {signal: cycleAbort.signal});
+                const data = await response.json();
+                if (requestId !== cycleRequest) return;
+                if (!response.ok) throw new Error(data.detail || 'Cycle kayıtları alınamadı');
+                if (!Array.isArray(data.items)) throw new Error('Sunucu yanıtı uyumsuz. Güncel main.py ile programı yeniden başlatın.');
+                if (!append) {
+                    availableCycles = [];
+                    cyclesData = {};
+                    savedCycleIds = new Set();
+                }
+                const known = new Set(availableCycles.map(c => c.id));
+                const incoming = data.items.filter(c => !known.has(c.id) && !savedCycleIds.has(c.id));
+                availableCycles.push(...incoming);
+                incoming.forEach(c => cyclesData[c.id] = {cycle:c});
+                cycleCursor = data.next_cursor;
+                cycleHasMore = data.has_more;
+                if (data.machines) {
+                    const filter = document.getElementById('cycle-filter-machine');
+                    const selected = filter.value;
+                    filter.innerHTML = '<option value="">Tüm makineler</option>' + data.machines.map(m =>
+                        `<option value="${m.id}">${escapeTrackingHtml(m.name)}</option>`).join('');
+                    filter.value = selected;
+                }
+                renderCycleCards(incoming, append);
+            } catch (err) {
+                if (err.name === 'AbortError' || requestId !== cycleRequest) return;
+                if (!append) { cycleHasMore = false; cycleCursor = null; }
+                console.error('Cycle verisi alınamadı:', err);
+                alert(err.message || 'Cycle kayıtları alınamadı');
+            } finally {
+                if (requestId === cycleRequest) {
+                    cycleLoading = false;
+                    updateCyclePagination();
+                }
+            }
+        }
 
         function showOrderStatus(cycleId, status) {
             // Kalan adedi göster
@@ -679,6 +722,7 @@
                 document.getElementById(`order-select-${cycleId}`)?.closest('.cycle-card')?.remove();
                 delete cyclesData[cycleId];
                 if (!document.querySelector('#cycleContainer .cycle-card')) renderCycleCards([]);
+                updateCyclePagination();
                 try {
                     publishOrderStatus(ordernumber, await fetchOrderStatus(ordernumber, true));
                 } catch (err) {
@@ -690,11 +734,12 @@
         }
 
         // Cycle kartlarını oluştur
-        function renderCycleCards(cycles) {
+        function renderCycleCards(cycles, append = false) {
             const container = document.getElementById('cycleContainer');
-            container.innerHTML = '';
+            if (!append) container.innerHTML = '';
+            if (append && cycles.length) container.querySelector('.empty-state')?.remove();
             
-            if (cycles.length === 0) {
+            if (cycles.length === 0 && !append) {
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">✅</div>
@@ -778,28 +823,22 @@
             });
         }
 
-        function applyCycleMachineFilter() {
-            const selected = document.getElementById('cycle-filter-machine').value;
-            const startValue = document.getElementById('cycle-filter-start').value;
-            const endValue = document.getElementById('cycle-filter-end').value;
-            const showRunning = document.getElementById('cycle-show-running').checked;
-            const start = startValue ? new Date(startValue).getTime() : null;
-            const end = endValue ? new Date(endValue).getTime() : null;
-            let cycles = availableCycles.filter(c => {
-                if (selected && c.machine_name !== selected) return false;
-                if (!showRunning && !c.cycle_end_time) return false;
-                const cycleTime = new Date(c.cycle_start_time || c.timestamp || 0).getTime();
-                if (start !== null && cycleTime < start) return false;
-                if (end !== null && cycleTime > end) return false;
-                return true;
-            });
-            const direction = document.getElementById('cycle-date-sort').value;
-            cycles.sort((a, b) => {
-                const aTime = new Date(a.cycle_start_time || a.timestamp || 0).getTime();
-                const bTime = new Date(b.cycle_start_time || b.timestamp || 0).getTime();
-                return direction === 'asc' ? aTime - bTime : bTime - aTime;
-            });
-            renderCycleCards(cycles);
+        async function applyCycleMachineFilter() {
+            const start = document.getElementById('cycle-filter-start').value;
+            const end = document.getElementById('cycle-filter-end').value;
+            if (start && end && start > end) {
+                alert('Başlangıç tarihi bitişten sonra olamaz');
+                return;
+            }
+            cycleFilters = {
+                direction: document.getElementById('cycle-date-sort').value,
+                show_running: String(document.getElementById('cycle-show-running').checked)
+            };
+            const machine = document.getElementById('cycle-filter-machine').value;
+            if (machine) cycleFilters.machine_id = machine;
+            if (start) cycleFilters.start = start;
+            if (end) cycleFilters.end = end;
+            await loadCyclePage(false);
         }
 
         function localCycleDateTime(date) {
