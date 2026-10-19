@@ -199,6 +199,8 @@ async def startup_event():
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_perf_tasks_product_latest ON task_logs (product_id, timestamp, id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_perf_tasks_cycle_product ON task_logs (cycle_id, product_id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_perf_product_order_reverted ON product (ordernumber, is_reverted)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_perf_cycles_time ON cycle_logs (is_valid, coalesce(cycle_start_time, timestamp), id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_perf_cycles_machine_time ON cycle_logs (machine_id, is_valid, coalesce(cycle_start_time, timestamp), id)"))
 
         with engine.connect() as conn:
             cycle_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(cycle_logs);"))]
@@ -948,6 +950,66 @@ def download_database_backup():
     filename = f"ozdekan-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
     return StreamingResponse(io.BytesIO(raw), media_type="application/x-sqlite3",
         headers={"Content-Disposition": f"attachment; filename={filename}"})
+@app.get("/product-entry-cycles")
+def get_product_entry_cycles(
+    machine_id: Optional[int] = None, start: Optional[str] = None,
+    end: Optional[str] = None, show_running: bool = True,
+    direction: str = "desc", cursor: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Ürün girişine filtrelenmiş 10 cycle; kayıt silinmesinden etkilenmeyen devam imleci."""
+    if direction not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail="Geçersiz tarih sırası")
+
+    def parse_time(value):
+        try:
+            parsed = datetime.fromisoformat(value)
+            return parsed.astimezone().replace(tzinfo=None) if parsed.tzinfo else parsed
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Geçersiz tarih-saat")
+
+    start_at = parse_time(start) if start else None
+    end_at = parse_time(end) if end else None
+    if start_at and end_at and start_at > end_at:
+        raise HTTPException(status_code=400, detail="Başlangıç tarihi bitişten sonra olamaz")
+    cycle_time = func.coalesce(CycleLog.cycle_start_time, CycleLog.timestamp)
+    linked_product = db.query(TaskLog.id).join(Product, TaskLog.product_id == Product.id).filter(
+        TaskLog.cycle_id == CycleLog.id, Product.is_reverted.is_(False)
+    ).exists()
+    query = db.query(CycleLog).join(Machine, CycleLog.machine_id == Machine.id).options(
+        joinedload(CycleLog.machine)).filter(CycleLog.is_valid.is_(True), ~linked_product)
+    if machine_id is not None:
+        query = query.filter(CycleLog.machine_id == machine_id)
+    if start_at:
+        query = query.filter(cycle_time >= start_at)
+    if end_at:
+        query = query.filter(cycle_time <= end_at)
+    if not show_running:
+        query = query.filter(CycleLog.cycle_end_time.isnot(None))
+    if cursor:
+        try:
+            value = json.loads(cursor)
+            cursor_at = parse_time(value["time"])
+            cursor_id = int(value["id"])
+        except (ValueError, TypeError, KeyError):
+            raise HTTPException(status_code=400, detail="Geçersiz sayfa imleci")
+        if direction == "desc":
+            query = query.filter(or_(cycle_time < cursor_at, and_(cycle_time == cursor_at, CycleLog.id < cursor_id)))
+        else:
+            query = query.filter(or_(cycle_time > cursor_at, and_(cycle_time == cursor_at, CycleLog.id > cursor_id)))
+    query = query.order_by(cycle_time.desc(), CycleLog.id.desc()) if direction == "desc" else query.order_by(cycle_time.asc(), CycleLog.id.asc())
+    rows = query.limit(11).all()
+    page = rows[:10]
+    next_cursor = None
+    if len(rows) > 10:
+        last = page[-1]
+        next_cursor = json.dumps({"time": (last.cycle_start_time or last.timestamp).isoformat(), "id": last.id})
+    result = {"items": _cycle_log_rows(page), "has_more": len(rows) > 10, "next_cursor": next_cursor}
+    if not cursor:
+        result["machines"] = [{"id": mid, "name": name} for mid, name in db.query(Machine.id, Machine.name).order_by(Machine.name, Machine.id).all()]
+    return result
+
+
 @app.get("/cycle-logs")
 def get_cycle_logs(include_invalid: bool = False, db: Session = Depends(get_db), pending_only: bool = False):
     """
@@ -962,6 +1024,10 @@ def get_cycle_logs(include_invalid: bool = False, db: Session = Depends(get_db),
         ).exists()
         query = query.filter(~linked_product)
     cycles = query.order_by(CycleLog.cycle_start_time.asc()).all()
+    return _cycle_log_rows(cycles)
+
+
+def _cycle_log_rows(cycles):
     return [
         {
             "id": c.id,
