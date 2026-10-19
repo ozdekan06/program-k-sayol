@@ -348,15 +348,11 @@
             await Promise.all([fetchOrders(), fetchPersons()]);
             
             try {
-                const cycleRes = await fetch('/cycle-logs');
+                const cycleRes = await fetch('/cycle-logs?pending_only=true');
                 const cycles = await cycleRes.json();
 
-                const taskRes = await fetch('/task-logs');
-                const tasks = await taskRes.json();
-                
-                // Kaydedilmiş cycle'ları işaretle
-                const uniqueCycleIds = new Set(tasks.filter(t => !t.product_reverted).map(t => t.cycle_id));
-                savedCycleIds = uniqueCycleIds;
+                // Sunucu yalnızca aktif ürüne bağlı olmayan cycle'ları döndürür.
+                savedCycleIds = new Set();
 
                 // Sadece yeni cycle'ları göster
                 availableCycles = cycles.filter(c => !savedCycleIds.has(c.id));
